@@ -1,0 +1,149 @@
+🚀 Step 2: Fetch Detailed Jenkins Build Information
+
+Now, we will enhance the Jenkins backend to include:
+✔️ Build timestamps (when the build started)
+✔️ Build duration (how long the build took)
+✔️ Build result (SUCCESS, FAILURE, etc.)
+✔️ Commit hash & author (if available)
+
+1️⃣ Modify jenkins.service.ts to Fetch Build Details
+	•	Jenkins API Endpoint for Build Details:
+
+http://your-jenkins-server/job/{job-name}/lastBuild/api/json
+
+
+	•	Jenkins API Example Response:
+
+{
+  "id": "25",
+  "building": false,
+  "result": "SUCCESS",
+  "duration": 45210,
+  "timestamp": 1707280800000,
+  "actions": [
+    {
+      "lastBuiltRevision": {
+        "SHA1": "b91d2fa3f78a"
+      },
+      "causes": [
+        { "userName": "JohnDoe" }
+      ]
+    }
+  ]
+}
+
+
+	•	Update jenkins.service.ts:
+
+import { Injectable, Logger } from '@nestjs/common';
+import axios from 'axios';
+
+@Injectable()
+export class JenkinsService {
+  private readonly JENKINS_URL = 'http://your-jenkins-server';
+  private readonly JENKINS_USER = 'your_username';
+  private readonly JENKINS_TOKEN = 'your_api_token';
+  private readonly logger = new Logger(JenkinsService.name);
+
+  async getJobStatuses(): Promise<any> {
+    try {
+      const url = `${this.JENKINS_URL}/api/json?tree=jobs[name,color,lastBuild[number,timestamp,duration,result,actions[causes[userName],lastBuiltRevision[SHA1]]]]`;
+      const response = await axios.get(url, {
+        auth: { username: this.JENKINS_USER, password: this.JENKINS_TOKEN },
+      });
+
+      return response.data.jobs.map(job => ({
+        name: job.name,
+        status: this.parseStatus(job.color),
+        lastBuild: job.lastBuild ? {
+          buildNumber: job.lastBuild.number,
+          timestamp: new Date(job.lastBuild.timestamp).toISOString(),
+          duration: this.formatDuration(job.lastBuild.duration),
+          result: job.lastBuild.result || 'IN_PROGRESS',
+          commitHash: job.lastBuild.actions?.find(a => a.lastBuiltRevision)?.lastBuiltRevision?.SHA1 || 'Unknown',
+          triggeredBy: job.lastBuild.actions?.find(a => a.causes)?.causes?.[0]?.userName || 'Unknown'
+        } : null,
+      }));
+    } catch (error) {
+      this.logger.error('Failed to fetch Jenkins jobs', error);
+      throw error;
+    }
+  }
+
+  private parseStatus(color: string): string {
+    const statusMap = { blue: 'SUCCESS', red: 'FAILED', yellow: 'UNSTABLE', notbuilt: 'NOT BUILT', aborted: 'ABORTED' };
+    return statusMap[color] || 'UNKNOWN';
+  }
+
+  private formatDuration(ms: number): string {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}m ${seconds % 60}s`;
+  }
+}
+
+✅ Enhancements Added:
+	•	Fetches build number, timestamp, duration, and result
+	•	Extracts commit hash & triggering user
+
+2️⃣ Modify jenkins.controller.ts to Handle Detailed Builds
+
+import { Controller, Get } from '@nestjs/common';
+import { JenkinsService } from './jenkins.service';
+
+@Controller('jenkins')
+export class JenkinsController {
+  constructor(private readonly jenkinsService: JenkinsService) {}
+
+  @Get('jobs')
+  async getJobStatuses() {
+    return this.jenkinsService.getJobStatuses();
+  }
+}
+
+✅ No change needed since the API response structure is already updated.
+
+3️⃣ Test the API
+
+Start the backend:
+
+npm run start
+
+Make a request:
+
+GET http://localhost:3000/jenkins/jobs
+
+✅ Expected Response:
+
+[
+  {
+    "name": "Build-Project-A",
+    "status": "SUCCESS",
+    "lastBuild": {
+      "buildNumber": 25,
+      "timestamp": "2024-02-08T12:00:00.000Z",
+      "duration": "0m 45s",
+      "result": "SUCCESS",
+      "commitHash": "b91d2fa3f78a",
+      "triggeredBy": "JohnDoe"
+    }
+  },
+  {
+    "name": "Deploy-App",
+    "status": "FAILED",
+    "lastBuild": {
+      "buildNumber": 19,
+      "timestamp": "2024-02-08T11:30:00.000Z",
+      "duration": "2m 10s",
+      "result": "FAILED",
+      "commitHash": "a3c9f2b1d79c",
+      "triggeredBy": "Alice"
+    }
+  }
+]
+
+🎯 Next Steps
+
+Now that we have detailed Jenkins build data, should we:
+1️⃣ Move to Git backend (recent commits, contributors)?
+2️⃣ Enhance Jenkins further (fetch logs, build artifacts, console output)?
