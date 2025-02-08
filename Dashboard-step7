@@ -1,0 +1,173 @@
+🚀 Step 6: Implement Git Backend (Recent Commits & Top Contributors)
+
+Now, we will integrate the Git backend to:
+✔️ Fetch recent commits from GitHub/GitLab
+✔️ Get top contributors for a repository
+✔️ Support GitHub & GitLab API
+
+1️⃣ Create Git Module in NestJS
+
+Navigate to the backend folder and generate the Git module.
+
+cd backend
+npx nest generate module git
+npx nest generate service git
+npx nest generate controller git
+
+✅ This creates:
+
+backend/src/git/
+│── git.module.ts
+│── git.service.ts
+│── git.controller.ts
+
+2️⃣ Update git.service.ts to Fetch Data from GitHub API
+
+GitHub API Endpoints Used
+	•	Recent commits:
+
+GET https://api.github.com/repos/{owner}/{repo}/commits
+
+
+	•	Top contributors:
+
+GET https://api.github.com/repos/{owner}/{repo}/contributors
+
+
+
+Modify git.service.ts
+
+import { Injectable, Logger } from '@nestjs/common';
+import axios from 'axios';
+
+@Injectable()
+export class GitService {
+  private readonly GITHUB_API_URL = 'https://api.github.com';
+  private readonly GITLAB_API_URL = 'https://gitlab.com/api/v4';
+  private readonly GITHUB_TOKEN = 'your_github_token'; // Use ENV variable in production
+  private readonly logger = new Logger(GitService.name);
+
+  async getRecentCommits(owner: string, repo: string): Promise<any> {
+    try {
+      const url = `${this.GITHUB_API_URL}/repos/${owner}/${repo}/commits`;
+      const response = await axios.get(url, {
+        headers: { Authorization: `Bearer ${this.GITHUB_TOKEN}` }
+      });
+
+      return response.data.map(commit => ({
+        message: commit.commit.message,
+        author: commit.commit.author.name,
+        date: commit.commit.author.date,
+        sha: commit.sha
+      }));
+    } catch (error) {
+      this.logger.error(`Failed to fetch commits for ${owner}/${repo}`, error);
+      throw error;
+    }
+  }
+
+  async getTopContributors(owner: string, repo: string): Promise<any> {
+    try {
+      const url = `${this.GITHUB_API_URL}/repos/${owner}/${repo}/contributors`;
+      const response = await axios.get(url, {
+        headers: { Authorization: `Bearer ${this.GITHUB_TOKEN}` }
+      });
+
+      return response.data.map(contributor => ({
+        username: contributor.login,
+        contributions: contributor.contributions,
+        avatar_url: contributor.avatar_url
+      }));
+    } catch (error) {
+      this.logger.error(`Failed to fetch contributors for ${owner}/${repo}`, error);
+      throw error;
+    }
+  }
+}
+
+✅ What This Does:
+	•	Fetches recent commits (commit message, author, date, SHA).
+	•	Fetches top contributors (username, contributions count).
+
+3️⃣ Update git.controller.ts
+
+Expose endpoints to get commits & contributors.
+
+import { Controller, Get, Param } from '@nestjs/common';
+import { GitService } from './git.service';
+
+@Controller('git')
+export class GitController {
+  constructor(private readonly gitService: GitService) {}
+
+  @Get('commits/:owner/:repo')
+  async getCommits(@Param('owner') owner: string, @Param('repo') repo: string) {
+    return this.gitService.getRecentCommits(owner, repo);
+  }
+
+  @Get('contributors/:owner/:repo')
+  async getContributors(@Param('owner') owner: string, @Param('repo') repo: string) {
+    return this.gitService.getTopContributors(owner, repo);
+  }
+}
+
+✅ New API Endpoints:
+	•	GET /git/commits/{owner}/{repo} → Fetch recent commits
+	•	GET /git/contributors/{owner}/{repo} → Fetch top contributors
+
+4️⃣ Register Git Module in app.module.ts
+
+import { Module } from '@nestjs/common';
+import { GitModule } from './git/git.module';
+import { JenkinsModule } from './jenkins/jenkins.module';
+
+@Module({
+  imports: [GitModule, JenkinsModule],
+})
+export class AppModule {}
+
+5️⃣ Run & Test Git Backend
+
+Start Backend
+
+npm run start
+
+Test API in Postman
+
+✅ Fetch Recent Commits
+
+GET http://localhost:3000/git/commits/facebook/react
+
+Response:
+
+[
+  {
+    "message": "Fix memory leak in useEffect",
+    "author": "Dan Abramov",
+    "date": "2024-02-08T12:30:00Z",
+    "sha": "a3c9f2b1d79c"
+  },
+  {
+    "message": "Improve Suspense handling",
+    "author": "Andrew Clark",
+    "date": "2024-02-07T10:15:00Z",
+    "sha": "b19d9ab18fae"
+  }
+]
+
+✅ Fetch Top Contributors
+
+GET http://localhost:3000/git/contributors/facebook/react
+
+Response:
+
+[
+  { "username": "gaearon", "contributions": 1050, "avatar_url": "https://github.com/gaearon.png" },
+  { "username": "acdlite", "contributions": 750, "avatar_url": "https://github.com/acdlite.png" }
+]
+
+🎯 Next Steps
+
+Now that the Git backend is complete, should we:
+1️⃣ Build Git frontend UI in Angular?
+2️⃣ Add GitLab support (for teams using GitLab)?
