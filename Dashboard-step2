@@ -1,0 +1,124 @@
+Great! Let’s implement the Jenkins backend module in NestJS, which includes:
+	1.	jenkins.service.ts → Fetch Jenkins job statuses
+	2.	jenkins.controller.ts → Expose API endpoints
+	3.	jenkins.module.ts → Register module in NestJS
+
+1️⃣ jenkins.service.ts (Service Layer)
+	•	This file will communicate with Jenkins REST API to fetch job statuses.
+	•	We’ll also set up a WebSocket event for real-time updates.
+
+import { Injectable, Logger } from '@nestjs/common';
+import axios from 'axios';
+
+@Injectable()
+export class JenkinsService {
+  private readonly JENKINS_URL = 'http://your-jenkins-server';
+  private readonly JENKINS_USER = 'your_username';
+  private readonly JENKINS_TOKEN = 'your_api_token';
+
+  private readonly logger = new Logger(JenkinsService.name);
+
+  async getJobStatuses(): Promise<any> {
+    try {
+      const url = `${this.JENKINS_URL}/api/json?tree=jobs[name,color]`;
+      const response = await axios.get(url, {
+        auth: { username: this.JENKINS_USER, password: this.JENKINS_TOKEN },
+      });
+
+      return response.data.jobs.map(job => ({
+        name: job.name,
+        status: this.parseStatus(job.color),
+      }));
+    } catch (error) {
+      this.logger.error('Failed to fetch Jenkins jobs', error);
+      throw error;
+    }
+  }
+
+  private parseStatus(color: string): string {
+    switch (color) {
+      case 'blue': return 'SUCCESS';
+      case 'red': return 'FAILED';
+      case 'yellow': return 'UNSTABLE';
+      case 'notbuilt': return 'NOT BUILT';
+      case 'aborted': return 'ABORTED';
+      default: return 'UNKNOWN';
+    }
+  }
+}
+
+✅ What this does:
+	•	Calls Jenkins REST API to fetch job statuses.
+	•	Maps Jenkins colors (blue, red, yellow, etc.) to readable statuses.
+
+2️⃣ jenkins.controller.ts (Controller Layer)
+	•	This will expose API endpoints to get job statuses.
+
+import { Controller, Get } from '@nestjs/common';
+import { JenkinsService } from './jenkins.service';
+
+@Controller('jenkins')
+export class JenkinsController {
+  constructor(private readonly jenkinsService: JenkinsService) {}
+
+  @Get('jobs')
+  async getJobStatuses() {
+    return this.jenkinsService.getJobStatuses();
+  }
+}
+
+✅ What this does:
+	•	Defines the route GET /jenkins/jobs to fetch job statuses from Jenkins.
+
+3️⃣ jenkins.module.ts (Module Layer)
+	•	This registers Jenkins service and controller in NestJS.
+
+import { Module } from '@nestjs/common';
+import { JenkinsService } from './jenkins.service';
+import { JenkinsController } from './jenkins.controller';
+
+@Module({
+  providers: [JenkinsService],
+  controllers: [JenkinsController],
+})
+export class JenkinsModule {}
+
+✅ What this does:
+	•	Imports Jenkins Service & Controller into the module.
+	•	Makes them available to NestJS dependency injection system.
+
+📌 Step 4: Register Jenkins Module in app.module.ts
+
+Modify app.module.ts to include Jenkins.
+
+import { Module } from '@nestjs/common';
+import { JenkinsModule } from './jenkins/jenkins.module';
+
+@Module({
+  imports: [JenkinsModule],
+})
+export class AppModule {}
+
+📌 Step 5: Run & Test Backend
+
+Start the NestJS server
+
+npm run start
+
+Test API Endpoint in Postman or Browser
+
+GET http://localhost:3000/jenkins/jobs
+
+✅ Expected JSON Response:
+
+[
+  { "name": "Build-Project-A", "status": "SUCCESS" },
+  { "name": "Deploy-App", "status": "FAILED" },
+  { "name": "Test-Suite", "status": "UNSTABLE" }
+]
+
+🎯 Next Steps
+
+✅ Jenkins API integration is done! Now, should we:
+1️⃣ Implement WebSockets for real-time job status updates?
+2️⃣ Add Jenkins build details (timestamps, logs, duration, etc.)?
