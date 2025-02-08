@@ -1,0 +1,244 @@
+🚀 Step 5: Enhance Jenkins Dashboard UI with Angular Material
+
+Now, we will improve the Jenkins dashboard UI by:
+✔️ Using Angular Material for a modern look
+✔️ Adding color-coded status badges
+✔️ Displaying logs in a modal dialog
+✔️ Using progress spinners for loading states
+
+1️⃣ Install Angular Material
+
+ng add @angular/material
+
+✔️ Choose “Indigo/Pink” theme (or any you prefer).
+✔️ Select “Yes” for global typography & animations.
+
+2️⃣ Import Angular Material Modules in app.module.ts
+
+Modify app.module.ts to import Material components.
+
+import { NgModule } from '@angular/core';
+import { BrowserModule } from '@angular/platform-browser';
+import { HttpClientModule } from '@angular/common/http';
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
+
+// Angular Material Components
+import { MatTableModule } from '@angular/material/table';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
+import { MatDialogModule } from '@angular/material/dialog';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatChipsModule } from '@angular/material/chips';
+
+import { AppComponent } from './app.component';
+import { JenkinsDashboardComponent } from './components/jenkins-dashboard/jenkins-dashboard.component';
+import { JenkinsService } from './services/jenkins.service';
+import { LogsDialogComponent } from './components/logs-dialog/logs-dialog.component';
+
+@NgModule({
+  declarations: [
+    AppComponent,
+    JenkinsDashboardComponent,
+    LogsDialogComponent
+  ],
+  imports: [
+    BrowserModule,
+    HttpClientModule,
+    BrowserAnimationsModule,
+    MatTableModule,
+    MatButtonModule,
+    MatIconModule,
+    MatDialogModule,
+    MatProgressSpinnerModule,
+    MatChipsModule
+  ],
+  providers: [JenkinsService],
+  bootstrap: [AppComponent]
+})
+export class AppModule { }
+
+✅ Imported Material UI components:
+	•	MatTableModule → Displays job statuses in a table
+	•	MatButtonModule → Buttons for actions
+	•	MatIconModule → Icons for better UI
+	•	MatDialogModule → Shows logs in a popup
+	•	MatProgressSpinnerModule → Adds loading spinners
+	•	MatChipsModule → Color-coded status badges
+
+3️⃣ Create a Material Dialog for Build Logs
+
+We will display logs inside a modal popup instead of showing them inline.
+
+Generate a New Component for Logs Dialog
+
+ng generate component components/logs-dialog
+
+Modify logs-dialog.component.ts
+
+import { Component, Inject } from '@angular/core';
+import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
+
+@Component({
+  selector: 'app-logs-dialog',
+  templateUrl: './logs-dialog.component.html',
+  styleUrls: ['./logs-dialog.component.css']
+})
+export class LogsDialogComponent {
+  constructor(
+    public dialogRef: MatDialogRef<LogsDialogComponent>,
+    @Inject(MAT_DIALOG_DATA) public data: { logs: string }
+  ) {}
+
+  close(): void {
+    this.dialogRef.close();
+  }
+}
+
+Modify logs-dialog.component.html
+
+<h2 mat-dialog-title>Build Logs</h2>
+<mat-dialog-content>
+  <pre>{{ data.logs }}</pre>
+</mat-dialog-content>
+<mat-dialog-actions>
+  <button mat-button color="primary" (click)="close()">Close</button>
+</mat-dialog-actions>
+
+Modify logs-dialog.component.css
+
+pre {
+  background-color: #000;
+  color: #fff;
+  padding: 10px;
+  max-height: 300px;
+  overflow: auto;
+}
+
+4️⃣ Modify jenkins-dashboard.component.ts
+
+Now, update the Jenkins Dashboard Component to:
+✔️ Use Material Table (<mat-table>)
+✔️ Add color-coded job status chips (<mat-chip>)
+✔️ Use a modal dialog for logs
+
+import { Component, OnInit } from '@angular/core';
+import { MatDialog } from '@angular/material/dialog';
+import { JenkinsService } from '../../services/jenkins.service';
+import { LogsDialogComponent } from '../logs-dialog/logs-dialog.component';
+
+@Component({
+  selector: 'app-jenkins-dashboard',
+  templateUrl: './jenkins-dashboard.component.html',
+  styleUrls: ['./jenkins-dashboard.component.css']
+})
+export class JenkinsDashboardComponent implements OnInit {
+  jobs: any[] = [];
+  loading: boolean = true;
+
+  constructor(private jenkinsService: JenkinsService, public dialog: MatDialog) {}
+
+  ngOnInit() {
+    this.loadJobStatuses();
+  }
+
+  loadJobStatuses() {
+    this.loading = true;
+    this.jenkinsService.getJobStatuses().subscribe(data => {
+      this.jobs = data;
+      this.loading = false;
+    }, () => {
+      this.loading = false;
+    });
+  }
+
+  openLogsDialog(jobName: string, buildNumber: number) {
+    this.jenkinsService.getBuildLogs(jobName, buildNumber).subscribe(logs => {
+      this.dialog.open(LogsDialogComponent, { data: { logs } });
+    });
+  }
+
+  getStatusColor(status: string): string {
+    const statusColors = {
+      SUCCESS: 'green',
+      FAILED: 'red',
+      UNSTABLE: 'orange',
+      'NOT BUILT': 'gray',
+      ABORTED: 'black',
+      UNKNOWN: 'blue'
+    };
+    return statusColors[status] || 'blue';
+  }
+}
+
+✅ Improvements:
+	•	Shows a loading spinner while fetching data
+	•	Opens logs in a Material Dialog
+	•	Uses color-coded status chips
+
+5️⃣ Modify jenkins-dashboard.component.html
+
+Replace the old <table> with a Material Table (<mat-table>).
+
+<h2>Jenkins Build Dashboard</h2>
+
+<mat-spinner *ngIf="loading"></mat-spinner>
+
+<mat-table [dataSource]="jobs" *ngIf="!loading">
+  <ng-container matColumnDef="name">
+    <mat-header-cell *matHeaderCellDef> Job Name </mat-header-cell>
+    <mat-cell *matCellDef="let job"> {{ job.name }} </mat-cell>
+  </ng-container>
+
+  <ng-container matColumnDef="status">
+    <mat-header-cell *matHeaderCellDef> Status </mat-header-cell>
+    <mat-cell *matCellDef="let job">
+      <mat-chip [style.backgroundColor]="getStatusColor(job.status)">
+        {{ job.status }}
+      </mat-chip>
+    </mat-cell>
+  </ng-container>
+
+  <ng-container matColumnDef="buildNumber">
+    <mat-header-cell *matHeaderCellDef> Build # </mat-header-cell>
+    <mat-cell *matCellDef="let job"> {{ job.lastBuild?.buildNumber || 'N/A' }} </mat-cell>
+  </ng-container>
+
+  <ng-container matColumnDef="actions">
+    <mat-header-cell *matHeaderCellDef> Actions </mat-header-cell>
+    <mat-cell *matCellDef="let job">
+      <button mat-button color="primary" (click)="openLogsDialog(job.name, job.lastBuild?.buildNumber)" [disabled]="!job.lastBuild">
+        View Logs
+      </button>
+    </mat-cell>
+  </ng-container>
+
+  <mat-header-row *matHeaderRowDef="['name', 'status', 'buildNumber', 'actions']"></mat-header-row>
+  <mat-row *matRowDef="let row; columns: ['name', 'status', 'buildNumber', 'actions'];"></mat-row>
+</mat-table>
+
+✅ Improvements:
+	•	Material Table (<mat-table>) for structured data
+	•	Color-coded job statuses (<mat-chip>)
+	•	“View Logs” button opens a Material Dialog
+
+6️⃣ Run & Test the UI
+
+Start Angular Frontend
+
+ng serve
+
+Start Backend (If Not Running)
+
+cd backend
+npm run start
+
+Open in Browser
+	•	Navigate to http://localhost:4200
+	•	Jenkins jobs should now be displayed in Material Table
+	•	Clicking “View Logs” should open a popup dialog
+
+🎯 Next Steps
+
+Now that the Jenkins UI is fully enhanced, should we:
+1️⃣ Move to Git backend (recent commits, contributors)?
+2️⃣ Add WebSockets for real-time Jenkins updates?
