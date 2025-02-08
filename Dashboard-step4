@@ -1,0 +1,191 @@
+🚀 Step 3: Fetch Jenkins Build Logs & Artifacts
+
+Now, we will enhance the Jenkins backend to include:
+✔️ Build console logs (to check errors and warnings)
+✔️ Build artifacts (downloadable files from Jenkins)
+✔️ Build parameters (if the job was triggered with input values)
+
+1️⃣ Update jenkins.service.ts to Fetch Logs & Artifacts
+
+Jenkins API Endpoints Used
+	1.	Build Logs:
+
+http://your-jenkins-server/job/{job-name}/{build-number}/consoleText
+
+
+	2.	Build Artifacts:
+
+http://your-jenkins-server/job/{job-name}/{build-number}/api/json?tree=artifacts[fileName,relativePath]
+
+
+	3.	Build Parameters (If Job Was Triggered With Inputs):
+
+http://your-jenkins-server/job/{job-name}/{build-number}/api/json?tree=actions[parameters[name,value]]
+
+
+
+Modify jenkins.service.ts
+
+import { Injectable, Logger } from '@nestjs/common';
+import axios from 'axios';
+
+@Injectable()
+export class JenkinsService {
+  private readonly JENKINS_URL = 'http://your-jenkins-server';
+  private readonly JENKINS_USER = 'your_username';
+  private readonly JENKINS_TOKEN = 'your_api_token';
+  private readonly logger = new Logger(JenkinsService.name);
+
+  async getJobStatuses(): Promise<any> {
+    try {
+      const url = `${this.JENKINS_URL}/api/json?tree=jobs[name,color,lastBuild[number,timestamp,duration,result,actions[causes[userName],lastBuiltRevision[SHA1],parameters[name,value]]]]`;
+      const response = await axios.get(url, {
+        auth: { username: this.JENKINS_USER, password: this.JENKINS_TOKEN },
+      });
+
+      return response.data.jobs.map(job => ({
+        name: job.name,
+        status: this.parseStatus(job.color),
+        lastBuild: job.lastBuild ? {
+          buildNumber: job.lastBuild.number,
+          timestamp: new Date(job.lastBuild.timestamp).toISOString(),
+          duration: this.formatDuration(job.lastBuild.duration),
+          result: job.lastBuild.result || 'IN_PROGRESS',
+          commitHash: job.lastBuild.actions?.find(a => a.lastBuiltRevision)?.lastBuiltRevision?.SHA1 || 'Unknown',
+          triggeredBy: job.lastBuild.actions?.find(a => a.causes)?.causes?.[0]?.userName || 'Unknown',
+          parameters: this.extractParameters(job.lastBuild.actions)
+        } : null,
+      }));
+    } catch (error) {
+      this.logger.error('Failed to fetch Jenkins jobs', error);
+      throw error;
+    }
+  }
+
+  async getBuildLogs(jobName: string, buildNumber: number): Promise<string> {
+    try {
+      const url = `${this.JENKINS_URL}/job/${jobName}/${buildNumber}/consoleText`;
+      const response = await axios.get(url, {
+        auth: { username: this.JENKINS_USER, password: this.JENKINS_TOKEN },
+      });
+      return response.data;
+    } catch (error) {
+      this.logger.error(`Failed to fetch logs for ${jobName} #${buildNumber}`, error);
+      throw error;
+    }
+  }
+
+  async getBuildArtifacts(jobName: string, buildNumber: number): Promise<any> {
+    try {
+      const url = `${this.JENKINS_URL}/job/${jobName}/${buildNumber}/api/json?tree=artifacts[fileName,relativePath]`;
+      const response = await axios.get(url, {
+        auth: { username: this.JENKINS_USER, password: this.JENKINS_TOKEN },
+      });
+
+      return response.data.artifacts.map(artifact => ({
+        fileName: artifact.fileName,
+        downloadUrl: `${this.JENKINS_URL}/job/${jobName}/${buildNumber}/artifact/${artifact.relativePath}`,
+      }));
+    } catch (error) {
+      this.logger.error(`Failed to fetch artifacts for ${jobName} #${buildNumber}`, error);
+      throw error;
+    }
+  }
+
+  private extractParameters(actions: any[]): any {
+    const parametersAction = actions.find(action => action.parameters);
+    return parametersAction ? parametersAction.parameters.map(p => ({ name: p.name, value: p.value })) : [];
+  }
+
+  private parseStatus(color: string): string {
+    const statusMap = { blue: 'SUCCESS', red: 'FAILED', yellow: 'UNSTABLE', notbuilt: 'NOT BUILT', aborted: 'ABORTED' };
+    return statusMap[color] || 'UNKNOWN';
+  }
+
+  private formatDuration(ms: number): string {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}m ${seconds % 60}s`;
+  }
+}
+
+✅ Enhancements Added:
+	•	getBuildLogs() → Fetches build logs (console output).
+	•	getBuildArtifacts() → Retrieves build artifacts (downloadable files).
+	•	extractParameters() → Gets input parameters used when triggering the build.
+
+2️⃣ Modify jenkins.controller.ts to Expose New Endpoints
+
+import { Controller, Get, Param } from '@nestjs/common';
+import { JenkinsService } from './jenkins.service';
+
+@Controller('jenkins')
+export class JenkinsController {
+  constructor(private readonly jenkinsService: JenkinsService) {}
+
+  @Get('jobs')
+  async getJobStatuses() {
+    return this.jenkinsService.getJobStatuses();
+  }
+
+  @Get('jobs/:jobName/:buildNumber/logs')
+  async getBuildLogs(@Param('jobName') jobName: string, @Param('buildNumber') buildNumber: number) {
+    return this.jenkinsService.getBuildLogs(jobName, buildNumber);
+  }
+
+  @Get('jobs/:jobName/:buildNumber/artifacts')
+  async getBuildArtifacts(@Param('jobName') jobName: string, @Param('buildNumber') buildNumber: number) {
+    return this.jenkinsService.getBuildArtifacts(jobName, buildNumber);
+  }
+}
+
+✅ New API Endpoints:
+	•	GET /jenkins/jobs/{jobName}/{buildNumber}/logs → Fetch build logs
+	•	GET /jenkins/jobs/{jobName}/{buildNumber}/artifacts → Fetch build artifacts
+
+3️⃣ Test the API
+
+Start the Backend
+
+npm run start
+
+Test API Endpoints
+
+✅ Fetch Jenkins Job Statuses
+
+GET http://localhost:3000/jenkins/jobs
+
+✅ Fetch Jenkins Build Logs
+
+GET http://localhost:3000/jenkins/jobs/Build-Project-A/25/logs
+
+🔹 Expected Response:
+
+Started by user JohnDoe
+Running shell script
++ echo 'Deploying app...'
+Deploying app...
+Finished: SUCCESS
+
+✅ Fetch Jenkins Build Artifacts
+
+GET http://localhost:3000/jenkins/jobs/Build-Project-A/25/artifacts
+
+🔹 Expected JSON Response:
+
+[
+  { "fileName": "build.zip", "downloadUrl": "http://your-jenkins-server/job/Build-Project-A/25/artifact/build.zip" },
+  { "fileName": "test-report.xml", "downloadUrl": "http://your-jenkins-server/job/Build-Project-A/25/artifact/test-report.xml" }
+]
+
+🎯 Next Steps
+
+Now that we have:
+✔️ Job statuses ✅
+✔️ Build details (duration, timestamps, commit, triggeredBy) ✅
+✔️ Console logs ✅
+✔️ Build artifacts (downloadable files) ✅
+
+Do you want to:
+1️⃣ Enhance the frontend to display these details in Angular?
+2️⃣ Move to the Git backend (recent commits, contributors)?
