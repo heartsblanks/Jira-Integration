@@ -1,0 +1,255 @@
+🚀 Step 4: Enhance Angular Frontend for Jenkins Build Details
+
+Now, we will update the Angular frontend to:
+✔️ Display Jenkins job statuses
+✔️ Show build details (duration, timestamp, commit, triggeredBy)
+✔️ Provide buttons to fetch logs & artifacts
+
+1️⃣ Create Jenkins Service (jenkins.service.ts)
+
+This service will handle API calls to the NestJS backend.
+
+Create the Service
+
+ng generate service services/jenkins
+
+Update jenkins.service.ts
+
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class JenkinsService {
+  private apiUrl = 'http://localhost:3000/jenkins';
+
+  constructor(private http: HttpClient) {}
+
+  getJobStatuses(): Observable<any> {
+    return this.http.get(`${this.apiUrl}/jobs`);
+  }
+
+  getBuildLogs(jobName: string, buildNumber: number): Observable<string> {
+    return this.http.get(`${this.apiUrl}/jobs/${jobName}/${buildNumber}/logs`, { responseType: 'text' });
+  }
+
+  getBuildArtifacts(jobName: string, buildNumber: number): Observable<any> {
+    return this.http.get(`${this.apiUrl}/jobs/${jobName}/${buildNumber}/artifacts`);
+  }
+}
+
+✅ Handles API calls for:
+	•	Fetching job statuses
+	•	Fetching build logs
+	•	Fetching build artifacts
+
+2️⃣ Create Jenkins Dashboard Component (jenkins-dashboard)
+
+ng generate component components/jenkins-dashboard
+
+3️⃣ Update jenkins-dashboard.component.ts
+
+This component will:
+✔️ Display job statuses
+✔️ Show latest build details
+✔️ Fetch & display logs and artifacts
+
+import { Component, OnInit } from '@angular/core';
+import { JenkinsService } from '../../services/jenkins.service';
+
+@Component({
+  selector: 'app-jenkins-dashboard',
+  templateUrl: './jenkins-dashboard.component.html',
+  styleUrls: ['./jenkins-dashboard.component.css']
+})
+export class JenkinsDashboardComponent implements OnInit {
+  jobs: any[] = [];
+  selectedLogs: string | null = null;
+  selectedArtifacts: any[] = [];
+
+  constructor(private jenkinsService: JenkinsService) {}
+
+  ngOnInit() {
+    this.loadJobStatuses();
+  }
+
+  loadJobStatuses() {
+    this.jenkinsService.getJobStatuses().subscribe(data => {
+      this.jobs = data;
+    });
+  }
+
+  fetchLogs(jobName: string, buildNumber: number) {
+    this.jenkinsService.getBuildLogs(jobName, buildNumber).subscribe(logs => {
+      this.selectedLogs = logs;
+    });
+  }
+
+  fetchArtifacts(jobName: string, buildNumber: number) {
+    this.jenkinsService.getBuildArtifacts(jobName, buildNumber).subscribe(artifacts => {
+      this.selectedArtifacts = artifacts;
+    });
+  }
+}
+
+✅ What This Does:
+	•	Fetches job statuses from Jenkins API
+	•	Shows build number, result, duration, timestamp, commit hash
+	•	Fetches logs & artifacts on button click
+
+4️⃣ Update jenkins-dashboard.component.html
+
+This template will:
+✔️ Display Jenkins jobs & build statuses
+✔️ Show logs & artifacts when requested
+
+<h2>Jenkins Build Dashboard</h2>
+
+<table>
+  <tr>
+    <th>Job Name</th>
+    <th>Status</th>
+    <th>Build #</th>
+    <th>Duration</th>
+    <th>Timestamp</th>
+    <th>Commit Hash</th>
+    <th>Triggered By</th>
+    <th>Actions</th>
+  </tr>
+  <tr *ngFor="let job of jobs">
+    <td>{{ job.name }}</td>
+    <td>{{ job.status }}</td>
+    <td>{{ job.lastBuild?.buildNumber || 'N/A' }}</td>
+    <td>{{ job.lastBuild?.duration || 'N/A' }}</td>
+    <td>{{ job.lastBuild?.timestamp | date:'short' }}</td>
+    <td>{{ job.lastBuild?.commitHash || 'N/A' }}</td>
+    <td>{{ job.lastBuild?.triggeredBy || 'N/A' }}</td>
+    <td>
+      <button (click)="fetchLogs(job.name, job.lastBuild?.buildNumber)" [disabled]="!job.lastBuild">
+        View Logs
+      </button>
+      <button (click)="fetchArtifacts(job.name, job.lastBuild?.buildNumber)" [disabled]="!job.lastBuild">
+        View Artifacts
+      </button>
+    </td>
+  </tr>
+</table>
+
+<!-- Build Logs Section -->
+<div *ngIf="selectedLogs">
+  <h3>Build Logs</h3>
+  <pre>{{ selectedLogs }}</pre>
+</div>
+
+<!-- Build Artifacts Section -->
+<div *ngIf="selectedArtifacts.length > 0">
+  <h3>Build Artifacts</h3>
+  <ul>
+    <li *ngFor="let artifact of selectedArtifacts">
+      <a [href]="artifact.downloadUrl" target="_blank">{{ artifact.fileName }}</a>
+    </li>
+  </ul>
+</div>
+
+✅ Features:
+	•	Displays Jenkins jobs & statuses in a table
+	•	Logs Section (Shows console logs when clicked)
+	•	Artifacts Section (Lists downloadable build artifacts)
+
+5️⃣ Update jenkins-dashboard.component.css (Optional for Styling)
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+
+th, td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+
+th {
+  background-color: #f4f4f4;
+}
+
+button {
+  margin-right: 5px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+pre {
+  background-color: #000;
+  color: #fff;
+  padding: 10px;
+  overflow: auto;
+  max-height: 300px;
+}
+
+ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+ul li {
+  margin: 5px 0;
+}
+
+6️⃣ Register Component in app.module.ts
+
+Add the new Jenkins Dashboard Component & Service.
+
+import { NgModule } from '@angular/core';
+import { BrowserModule } from '@angular/platform-browser';
+import { HttpClientModule } from '@angular/common/http';
+
+import { AppComponent } from './app.component';
+import { JenkinsDashboardComponent } from './components/jenkins-dashboard/jenkins-dashboard.component';
+import { JenkinsService } from './services/jenkins.service';
+
+@NgModule({
+  declarations: [
+    AppComponent,
+    JenkinsDashboardComponent
+  ],
+  imports: [
+    BrowserModule,
+    HttpClientModule
+  ],
+  providers: [JenkinsService],
+  bootstrap: [AppComponent]
+})
+export class AppModule { }
+
+7️⃣ Add jenkins-dashboard Component to Main View
+
+Update app.component.html to include the Jenkins Dashboard.
+
+<app-jenkins-dashboard></app-jenkins-dashboard>
+
+8️⃣ Run & Test the Frontend
+
+Start Angular Frontend
+
+ng serve
+
+Start Backend (If Not Running)
+
+cd backend
+npm run start
+
+Open in Browser
+	•	Navigate to http://localhost:4200
+	•	You should see Jenkins job statuses
+	•	Click “View Logs” to fetch console logs
+	•	Click “View Artifacts” to see downloadable files
+
+🎯 Next Steps
+
+Now that Jenkins frontend integration is complete, do you want to:
+1️⃣ Enhance UI with Angular Material (progress bars, color-coded statuses)?
+2️⃣ Move to Git backend (recent commits, contributors)?
