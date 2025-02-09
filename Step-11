@@ -1,0 +1,224 @@
+🚀 Step 11: Add Real-Time Updates to Git Dashboard with WebSockets
+
+Now, we will integrate WebSockets to:
+✔️ Receive live commit updates (instead of refreshing manually)
+✔️ Show new commits in real-time
+✔️ Use Socket.io for fast & efficient updates
+
+1️⃣ Install WebSocket Dependencies
+
+We’ll use socket.io for real-time communication.
+
+Install socket.io in Backend
+
+npm install @nestjs/websockets @nestjs/platform-socket.io socket.io
+
+Install socket.io-client in Frontend
+
+npm install socket.io-client
+
+✅ Now, we can send & receive updates between frontend & backend.
+
+2️⃣ Create a WebSocket Gateway in NestJS Backend
+
+A WebSocket Gateway listens for events & sends real-time updates.
+
+Generate WebSocket Gateway
+
+npx nest generate gateway websockets
+
+✅ This creates:
+
+backend/src/websockets/websockets.gateway.ts
+backend/src/websockets/websockets.module.ts
+
+3️⃣ Implement websockets.gateway.ts
+
+Modify WebSocket Gateway to broadcast new commits.
+
+import { SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
+import { Server } from 'socket.io';
+import { Injectable, Logger } from '@nestjs/common';
+import { GitService } from '../git/git.service';
+
+@WebSocketGateway({ cors: true })
+@Injectable()
+export class WebsocketsGateway {
+  @WebSocketServer()
+  server: Server;
+
+  private readonly logger = new Logger(WebsocketsGateway.name);
+
+  constructor(private readonly gitService: GitService) {}
+
+  async emitCommits(owner: string, repo: string, branch?: string) {
+    const commits = await this.gitService.getRecentCommits(owner, repo, branch);
+    this.server.emit('newCommits', commits);
+    this.logger.log(`Broadcasting new commits for ${owner}/${repo} (branch: ${branch || 'default'})`);
+  }
+
+  @SubscribeMessage('subscribeToCommits')
+  handleSubscribe(client: any, data: { owner: string; repo: string; branch?: string }) {
+    this.logger.log(`Client subscribed to commits: ${data.owner}/${data.repo} (branch: ${data.branch || 'default'})`);
+    this.emitCommits(data.owner, data.repo, data.branch);
+  }
+}
+
+✅ What This Does:
+	•	Broadcasts new commits to all connected clients
+	•	Listens for subscription requests (subscribeToCommits)
+	•	Fetches commits when a user subscribes
+
+4️⃣ Register WebSocket Module in app.module.ts
+
+Modify app.module.ts to include WebSockets.
+
+import { Module } from '@nestjs/common';
+import { GitModule } from './git/git.module';
+import { WebsocketsGateway } from './websockets/websockets.gateway';
+
+@Module({
+  imports: [GitModule],
+  providers: [WebsocketsGateway],
+})
+export class AppModule {}
+
+5️⃣ Modify Angular Service to Use WebSockets (git.service.ts)
+
+Modify git.service.ts to listen for real-time updates.
+
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+import { io } from 'socket.io-client';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class GitService {
+  private apiUrl = 'http://localhost:3000/git';
+  private socket = io('http://localhost:3000');
+
+  constructor(private http: HttpClient) {}
+
+  getCommits(owner: string, repo: string, branch?: string): Observable<any> {
+    const url = branch ? `${this.apiUrl}/commits/${owner}/${repo}?branch=${branch}` : `${this.apiUrl}/commits/${owner}/${repo}`;
+    return this.http.get(url);
+  }
+
+  subscribeToCommits(owner: string, repo: string, branch: string, callback: (data: any) => void) {
+    this.socket.emit('subscribeToCommits', { owner, repo, branch });
+    this.socket.on('newCommits', callback);
+  }
+}
+
+✅ What This Does:
+	•	Subscribes to real-time commit updates
+	•	Emits subscription request (subscribeToCommits)
+	•	Listens for newCommits event from backend
+
+6️⃣ Modify git-dashboard.component.ts to Listen for Real-Time Updates
+
+Now, update the component to receive real-time commits.
+
+import { Component, OnInit } from '@angular/core';
+import { GitService } from '../../services/git.service';
+
+@Component({
+  selector: 'app-git-dashboard',
+  templateUrl: './git-dashboard.component.html',
+  styleUrls: ['./git-dashboard.component.css']
+})
+export class GitDashboardComponent implements OnInit {
+  commits: any[] = [];
+  owner = 'your-org'; // Change this
+  repo = 'your-repo'; // Change this
+  branch = '';
+
+  constructor(private gitService: GitService) {}
+
+  ngOnInit() {
+    this.loadCommits();
+    this.subscribeToLiveCommits();
+  }
+
+  loadCommits() {
+    this.gitService.getCommits(this.owner, this.repo, this.branch).subscribe(data => {
+      this.commits = data;
+    });
+  }
+
+  subscribeToLiveCommits() {
+    this.gitService.subscribeToCommits(this.owner, this.repo, this.branch, (data) => {
+      this.commits = data;
+    });
+  }
+}
+
+✅ What This Does:
+	•	Loads commits initially
+	•	Listens for real-time commit updates
+
+7️⃣ Modify git-dashboard.component.html to Show Live Updates
+
+<h2>GitHub Commits Dashboard</h2>
+
+<mat-form-field>
+  <mat-label>Branch</mat-label>
+  <input matInput [(ngModel)]="branch" placeholder="Enter branch name">
+</mat-form-field>
+<button mat-raised-button color="primary" (click)="loadCommits()">Fetch Commits</button>
+
+<mat-table [dataSource]="commits">
+  <ng-container matColumnDef="message">
+    <mat-header-cell *matHeaderCellDef> Commit Message </mat-header-cell>
+    <mat-cell *matCellDef="let commit"> {{ commit.message }} </mat-cell>
+  </ng-container>
+
+  <ng-container matColumnDef="author">
+    <mat-header-cell *matHeaderCellDef> Author </mat-header-cell>
+    <mat-cell *matCellDef="let commit"> {{ commit.author }} </mat-cell>
+  </ng-container>
+
+  <ng-container matColumnDef="date">
+    <mat-header-cell *matHeaderCellDef> Date </mat-header-cell>
+    <mat-cell *matCellDef="let commit"> {{ commit.date | date:'short' }} </mat-cell>
+  </ng-container>
+
+  <ng-container matColumnDef="sha">
+    <mat-header-cell *matHeaderCellDef> SHA </mat-header-cell>
+    <mat-cell *matCellDef="let commit">
+      <a href="https://github.company.com/{{owner}}/{{repo}}/commit/{{commit.sha}}" target="_blank">
+        {{ commit.sha | slice:0:7 }}
+      </a>
+    </mat-cell>
+  </ng-container>
+
+  <mat-header-row *matHeaderRowDef="['message', 'author', 'date', 'sha']"></mat-header-row>
+  <mat-row *matRowDef="let row; columns: ['message', 'author', 'date', 'sha'];"></mat-row>
+</mat-table>
+
+✅ Commits update live without needing a refresh!
+
+8️⃣ Run & Test
+
+Start Backend
+
+cd backend
+npm run start
+
+Start Frontend
+
+cd frontend
+ng serve
+
+Test WebSockets
+	1.	Open two browser tabs with Git Dashboard (http://localhost:4200)
+	2.	Push a new commit to your repository
+	3.	The new commit appears instantly in the frontend!
+
+🎯 Next Steps
+
+Now that Git real-time updates are working, should we:
+1️⃣ Add real-time Jenkins build updates?
+2️⃣ Move to ServiceNow backend (incidents, change requests)?
