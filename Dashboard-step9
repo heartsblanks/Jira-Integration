@@ -1,0 +1,160 @@
+🚀 Step 8: Enhance Git Backend with Branch Filtering
+
+Since you’re using GitHub Enterprise, we will enhance the API to:
+✔️ Fetch commits from a specific branch
+✔️ Include default branch detection
+✔️ Add a fallback mechanism if no branch is specified
+
+1️⃣ Modify git.service.ts to Support Branch Filtering
+
+GitHub Enterprise API for Branch-Specific Commits
+
+GET https://github.company.com/api/v3/repos/{owner}/{repo}/commits?sha={branch}
+
+Modify git.service.ts
+
+import { Injectable, Logger } from '@nestjs/common';
+import axios from 'axios';
+import { config } from 'dotenv';
+
+config(); // Load environment variables
+
+@Injectable()
+export class GitService {
+  private readonly GITHUB_ENTERPRISE_API = process.env.GITHUB_ENTERPRISE_API;
+  private readonly GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+  private readonly logger = new Logger(GitService.name);
+
+  async getRecentCommits(owner: string, repo: string, branch?: string): Promise<any> {
+    try {
+      if (!branch) {
+        branch = await this.getDefaultBranch(owner, repo);
+      }
+
+      const url = `${this.GITHUB_ENTERPRISE_API}/repos/${owner}/${repo}/commits?sha=${branch}`;
+      const response = await axios.get(url, {
+        headers: { Authorization: `Bearer ${this.GITHUB_TOKEN}` }
+      });
+
+      return response.data.map(commit => ({
+        message: commit.commit.message,
+        author: commit.commit.author.name,
+        date: commit.commit.author.date,
+        sha: commit.sha,
+        branch: branch
+      }));
+    } catch (error) {
+      this.logger.error(`Failed to fetch commits for ${owner}/${repo} (branch: ${branch})`, error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  async getDefaultBranch(owner: string, repo: string): Promise<string> {
+    try {
+      const url = `${this.GITHUB_ENTERPRISE_API}/repos/${owner}/${repo}`;
+      const response = await axios.get(url, {
+        headers: { Authorization: `Bearer ${this.GITHUB_TOKEN}` }
+      });
+      return response.data.default_branch || 'main';
+    } catch (error) {
+      this.logger.error(`Failed to fetch default branch for ${owner}/${repo}`, error.response?.data || error.message);
+      return 'main'; // Fallback to 'main'
+    }
+  }
+
+  async getTopContributors(owner: string, repo: string): Promise<any> {
+    try {
+      const url = `${this.GITHUB_ENTERPRISE_API}/repos/${owner}/${repo}/contributors`;
+      const response = await axios.get(url, {
+        headers: { Authorization: `Bearer ${this.GITHUB_TOKEN}` }
+      });
+
+      return response.data.map(contributor => ({
+        username: contributor.login,
+        contributions: contributor.contributions,
+        avatar_url: contributor.avatar_url
+      }));
+    } catch (error) {
+      this.logger.error(`Failed to fetch contributors for ${owner}/${repo}`, error.response?.data || error.message);
+      throw error;
+    }
+  }
+}
+
+✅ Enhancements Added:
+	•	Supports branch filtering (if no branch is provided, fetches default branch)
+	•	Fetches default branch dynamically instead of assuming 'main'
+	•	Handles errors gracefully
+
+2️⃣ Modify git.controller.ts to Accept Branch Parameter
+
+import { Controller, Get, Param, Query } from '@nestjs/common';
+import { GitService } from './git.service';
+
+@Controller('git')
+export class GitController {
+  constructor(private readonly gitService: GitService) {}
+
+  @Get('commits/:owner/:repo')
+  async getCommits(
+    @Param('owner') owner: string,
+    @Param('repo') repo: string,
+    @Query('branch') branch?: string
+  ) {
+    return this.gitService.getRecentCommits(owner, repo, branch);
+  }
+
+  @Get('contributors/:owner/:repo')
+  async getContributors(@Param('owner') owner: string, @Param('repo') repo: string) {
+    return this.gitService.getTopContributors(owner, repo);
+  }
+}
+
+✅ New API Endpoint:
+	•	GET /git/commits/{owner}/{repo}?branch=feature-branch → Fetch commits from a specific branch
+	•	If no branch query param is provided, it defaults to the main branch
+
+3️⃣ Restart & Test API
+
+Restart Backend
+
+npm run start
+
+Test API in Postman
+
+✅ Fetch Commits from a Specific Branch
+
+GET http://localhost:3000/git/commits/org-name/repo-name?branch=feature-branch
+
+Response:
+
+[
+  {
+    "message": "Add new authentication logic",
+    "author": "Jane Doe",
+    "date": "2024-02-10T15:30:00Z",
+    "sha": "c72a9b2f8e9a",
+    "branch": "feature-branch"
+  },
+  {
+    "message": "Refactor API endpoints",
+    "author": "John Doe",
+    "date": "2024-02-09T10:45:00Z",
+    "sha": "a9f2b3c8d4e6",
+    "branch": "feature-branch"
+  }
+]
+
+✅ Fetch Commits from Default Branch
+
+GET http://localhost:3000/git/commits/org-name/repo-name
+
+If branch is not provided, it will:
+1️⃣ Fetch default branch dynamically
+2️⃣ Return commits from that branch
+
+🎯 Next Steps
+
+Now that we support branch filtering, should we:
+1️⃣ Build the Git frontend UI in Angular?
+2️⃣ Enhance API with commit diff & file changes?
