@@ -1,0 +1,251 @@
+🚀 Step 13: Integrate ServiceNow Backend (Incidents & Change Requests)
+
+Now, we will integrate ServiceNow to:
+✔️ Fetch open incidents (real-time ticket tracking)
+✔️ Fetch recent change requests (for deployments & approvals)
+✔️ Use ServiceNow REST API with authentication
+
+1️⃣ Set Up ServiceNow API Access
+	1.	Get your ServiceNow API Base URL
+
+https://your-instance.service-now.com/api/now/table
+
+
+	2.	Generate a ServiceNow API Token (if using OAuth)
+	3.	Create a ServiceNow User with API Access
+	4.	Grant Roles: itil, rest_api_explorer
+
+✅ Once setup is done, we can start coding!
+
+2️⃣ Generate ServiceNow Module in NestJS
+
+cd backend
+npx nest generate module servicenow
+npx nest generate service servicenow
+npx nest generate controller servicenow
+
+✅ This creates:
+
+backend/src/servicenow/
+│── servicenow.module.ts
+│── servicenow.service.ts
+│── servicenow.controller.ts
+
+3️⃣ Implement servicenow.service.ts (Fetch Incidents & Changes)
+
+import { Injectable, Logger } from '@nestjs/common';
+import axios from 'axios';
+import { config } from 'dotenv';
+
+config(); // Load environment variables
+
+@Injectable()
+export class ServiceNowService {
+  private readonly SERVICENOW_URL = process.env.SERVICENOW_URL;
+  private readonly SERVICENOW_USER = process.env.SERVICENOW_USER;
+  private readonly SERVICENOW_PASS = process.env.SERVICENOW_PASS;
+  private readonly logger = new Logger(ServiceNowService.name);
+
+  private getAuthHeaders() {
+    return {
+      Authorization: `Basic ${Buffer.from(`${this.SERVICENOW_USER}:${this.SERVICENOW_PASS}`).toString('base64')}`,
+      'Content-Type': 'application/json'
+    };
+  }
+
+  async getIncidents(): Promise<any> {
+    try {
+      const url = `${this.SERVICENOW_URL}/incident?sysparm_limit=10&sysparm_query=active=true`;
+      const response = await axios.get(url, { headers: this.getAuthHeaders() });
+
+      return response.data.result.map(incident => ({
+        number: incident.number,
+        short_description: incident.short_description,
+        state: incident.state,
+        priority: incident.priority,
+        assigned_to: incident.assigned_to?.display_value || 'Unassigned'
+      }));
+    } catch (error) {
+      this.logger.error('Failed to fetch incidents', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  async getChangeRequests(): Promise<any> {
+    try {
+      const url = `${this.SERVICENOW_URL}/change_request?sysparm_limit=5&sysparm_query=state!=closed`;
+      const response = await axios.get(url, { headers: this.getAuthHeaders() });
+
+      return response.data.result.map(change => ({
+        number: change.number,
+        description: change.description,
+        state: change.state,
+        requested_by: change.requested_by?.display_value || 'Unknown'
+      }));
+    } catch (error) {
+      this.logger.error('Failed to fetch change requests', error.response?.data || error.message);
+      throw error;
+    }
+  }
+}
+
+✅ What This Does:
+	•	Fetches open incidents (/incident)
+	•	Fetches active change requests (/change_request)
+	•	Uses Basic Auth (username & password encoded)
+
+4️⃣ Implement servicenow.controller.ts
+
+import { Controller, Get } from '@nestjs/common';
+import { ServiceNowService } from './servicenow.service';
+
+@Controller('servicenow')
+export class ServiceNowController {
+  constructor(private readonly serviceNowService: ServiceNowService) {}
+
+  @Get('incidents')
+  async getIncidents() {
+    return this.serviceNowService.getIncidents();
+  }
+
+  @Get('change-requests')
+  async getChangeRequests() {
+    return this.serviceNowService.getChangeRequests();
+  }
+}
+
+✅ API Endpoints:
+	•	GET /servicenow/incidents → Fetch open incidents
+	•	GET /servicenow/change-requests → Fetch active change requests
+
+5️⃣ Register ServiceNow Module in app.module.ts
+
+import { Module } from '@nestjs/common';
+import { ServiceNowModule } from './servicenow/servicenow.module';
+
+@Module({
+  imports: [ServiceNowModule],
+})
+export class AppModule {}
+
+6️⃣ Run & Test ServiceNow Backend
+
+Start Backend
+
+npm run start
+
+Test API in Postman
+
+✅ Fetch Open Incidents
+
+GET http://localhost:3000/servicenow/incidents
+
+Response:
+
+[
+  { "number": "INC0012345", "short_description": "Server outage", "state": "In Progress", "priority": "1", "assigned_to": "John Doe" },
+  { "number": "INC0012346", "short_description": "Login issue", "state": "New", "priority": "2", "assigned_to": "Unassigned" }
+]
+
+✅ Fetch Active Change Requests
+
+GET http://localhost:3000/servicenow/change-requests
+
+Response:
+
+[
+  { "number": "CHG0009876", "description": "Deploy new API version", "state": "Scheduled", "requested_by": "Alice Smith" },
+  { "number": "CHG0009877", "description": "Database migration", "state": "Pending", "requested_by": "Bob Johnson" }
+]
+
+7️⃣ Generate Angular Components for ServiceNow UI
+
+cd frontend
+ng generate service services/servicenow
+ng generate component components/servicenow-dashboard
+
+✅ This creates:
+
+frontend/src/app/services/servicenow.service.ts
+frontend/src/app/components/servicenow-dashboard/
+
+8️⃣ Implement servicenow.service.ts
+
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class ServiceNowService {
+  private apiUrl = 'http://localhost:3000/servicenow';
+
+  constructor(private http: HttpClient) {}
+
+  getIncidents(): Observable<any> {
+    return this.http.get(`${this.apiUrl}/incidents`);
+  }
+
+  getChangeRequests(): Observable<any> {
+    return this.http.get(`${this.apiUrl}/change-requests`);
+  }
+}
+
+9️⃣ Implement servicenow-dashboard.component.ts
+
+import { Component, OnInit } from '@angular/core';
+import { ServiceNowService } from '../../services/servicenow.service';
+
+@Component({
+  selector: 'app-servicenow-dashboard',
+  templateUrl: './servicenow-dashboard.component.html',
+  styleUrls: ['./servicenow-dashboard.component.css']
+})
+export class ServiceNowDashboardComponent implements OnInit {
+  incidents: any[] = [];
+  changeRequests: any[] = [];
+
+  constructor(private serviceNowService: ServiceNowService) {}
+
+  ngOnInit() {
+    this.loadIncidents();
+    this.loadChangeRequests();
+  }
+
+  loadIncidents() {
+    this.serviceNowService.getIncidents().subscribe(data => {
+      this.incidents = data;
+    });
+  }
+
+  loadChangeRequests() {
+    this.serviceNowService.getChangeRequests().subscribe(data => {
+      this.changeRequests = data;
+    });
+  }
+}
+
+🔟 Implement servicenow-dashboard.component.html
+
+<h2>ServiceNow Dashboard</h2>
+
+<h3>Open Incidents</h3>
+<ul>
+  <li *ngFor="let incident of incidents">
+    <strong>{{ incident.number }}</strong> - {{ incident.short_description }} ({{ incident.state }})
+  </li>
+</ul>
+
+<h3>Change Requests</h3>
+<ul>
+  <li *ngFor="let change of changeRequests">
+    <strong>{{ change.number }}</strong> - {{ change.description }} ({{ change.state }})
+  </li>
+</ul>
+
+🎯 Next Steps
+
+Now that ServiceNow integration is complete, should we:
+1️⃣ Add real-time WebSocket updates for ServiceNow?
+2️⃣ Move to Environment Health Monitoring (Prometheus, Kubernetes)?
