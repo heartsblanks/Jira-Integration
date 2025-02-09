@@ -1,0 +1,106 @@
+🚀 Step 7: Update Git Backend for GitHub Enterprise Support
+
+Since you’re using GitHub Enterprise, we need to:
+✔️ Use your custom GitHub Enterprise API URL
+✔️ Authenticate using a Personal Access Token (PAT)
+✔️ Ensure API rate limits & error handling
+
+1️⃣ Modify git.service.ts for GitHub Enterprise
+
+GitHub Enterprise API Base URL
+
+Instead of https://api.github.com, use your Enterprise GitHub API URL:
+
+https://github.company.com/api/v3
+
+Modify git.service.ts
+
+import { Injectable, Logger } from '@nestjs/common';
+import axios from 'axios';
+
+@Injectable()
+export class GitService {
+  private readonly GITHUB_ENTERPRISE_API = 'https://github.company.com/api/v3';
+  private readonly GITHUB_TOKEN = 'your_github_enterprise_token'; // Store in ENV in production
+  private readonly logger = new Logger(GitService.name);
+
+  async getRecentCommits(owner: string, repo: string): Promise<any> {
+    try {
+      const url = `${this.GITHUB_ENTERPRISE_API}/repos/${owner}/${repo}/commits`;
+      const response = await axios.get(url, {
+        headers: { Authorization: `Bearer ${this.GITHUB_TOKEN}` }
+      });
+
+      return response.data.map(commit => ({
+        message: commit.commit.message,
+        author: commit.commit.author.name,
+        date: commit.commit.author.date,
+        sha: commit.sha
+      }));
+    } catch (error) {
+      this.logger.error(`Failed to fetch commits for ${owner}/${repo}`, error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  async getTopContributors(owner: string, repo: string): Promise<any> {
+    try {
+      const url = `${this.GITHUB_ENTERPRISE_API}/repos/${owner}/${repo}/contributors`;
+      const response = await axios.get(url, {
+        headers: { Authorization: `Bearer ${this.GITHUB_TOKEN}` }
+      });
+
+      return response.data.map(contributor => ({
+        username: contributor.login,
+        contributions: contributor.contributions,
+        avatar_url: contributor.avatar_url
+      }));
+    } catch (error) {
+      this.logger.error(`Failed to fetch contributors for ${owner}/${repo}`, error.response?.data || error.message);
+      throw error;
+    }
+  }
+}
+
+✅ What’s changed?
+	•	Uses GitHub Enterprise API URL
+	•	Handles errors gracefully
+
+2️⃣ Update .env File (Security Best Practice)
+
+Instead of hardcoding credentials, store them in .env.
+
+GITHUB_ENTERPRISE_API=https://github.company.com/api/v3
+GITHUB_TOKEN=your_github_enterprise_token
+
+Then, install dotenv to load environment variables.
+
+npm install dotenv
+
+Modify git.service.ts to load environment variables:
+
+import { config } from 'dotenv';
+config(); // Load .env file
+
+private readonly GITHUB_ENTERPRISE_API = process.env.GITHUB_ENTERPRISE_API;
+private readonly GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+
+3️⃣ Restart & Test API
+
+Restart Backend
+
+npm run start
+
+Test Recent Commits
+
+GET http://localhost:3000/git/commits/org-name/repo-name
+
+Test Top Contributors
+
+GET http://localhost:3000/git/contributors/org-name/repo-name
+
+🎯 Next Steps
+
+Now that GitHub Enterprise integration is done, should we:
+1️⃣ Build Git frontend UI in Angular?
+2️⃣ Enhance API with repository branch filtering?
