@@ -1,0 +1,206 @@
+🚀 Step 12: Add Real-Time Jenkins Build Updates with WebSockets
+
+Now, we will integrate WebSockets into Jenkins to:
+✔️ Receive live Jenkins build updates (instead of refreshing manually)
+✔️ Show real-time build status changes
+✔️ Use Socket.io for fast updates
+
+1️⃣ Install WebSocket Dependencies in Backend
+
+Since we already installed socket.io, we just need to:
+✔️ Create a WebSocket Gateway
+✔️ Modify the Jenkins service to send real-time updates
+
+2️⃣ Create a WebSocket Gateway for Jenkins in NestJS
+
+Generate WebSocket Gateway
+
+npx nest generate gateway jenkins-websockets
+
+✅ This creates:
+
+backend/src/websockets/jenkins-websockets.gateway.ts
+backend/src/websockets/jenkins-websockets.module.ts
+
+3️⃣ Implement jenkins-websockets.gateway.ts
+
+Modify WebSocket Gateway to send real-time Jenkins build status.
+
+import { SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
+import { Server } from 'socket.io';
+import { Injectable, Logger } from '@nestjs/common';
+import { JenkinsService } from '../jenkins/jenkins.service';
+
+@WebSocketGateway({ cors: true })
+@Injectable()
+export class JenkinsWebsocketsGateway {
+  @WebSocketServer()
+  server: Server;
+
+  private readonly logger = new Logger(JenkinsWebsocketsGateway.name);
+
+  constructor(private readonly jenkinsService: JenkinsService) {}
+
+  async emitBuildStatus() {
+    const jobs = await this.jenkinsService.getJobStatuses();
+    this.server.emit('buildStatusUpdate', jobs);
+    this.logger.log(`Broadcasting Jenkins build status updates`);
+  }
+
+  @SubscribeMessage('subscribeToJenkins')
+  handleSubscribe(client: any) {
+    this.logger.log(`Client subscribed to Jenkins build updates`);
+    this.emitBuildStatus();
+  }
+}
+
+✅ What This Does:
+	•	Sends real-time Jenkins job statuses
+	•	Listens for subscribeToJenkins event
+	•	Fetches job statuses & emits updates to frontend
+
+4️⃣ Register WebSocket Module in app.module.ts
+
+Modify app.module.ts to include WebSockets.
+
+import { Module } from '@nestjs/common';
+import { JenkinsModule } from './jenkins/jenkins.module';
+import { JenkinsWebsocketsGateway } from './websockets/jenkins-websockets.gateway';
+
+@Module({
+  imports: [JenkinsModule],
+  providers: [JenkinsWebsocketsGateway],
+})
+export class AppModule {}
+
+5️⃣ Modify Angular Service to Use WebSockets (jenkins.service.ts)
+
+Modify jenkins.service.ts to listen for real-time updates.
+
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+import { io } from 'socket.io-client';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class JenkinsService {
+  private apiUrl = 'http://localhost:3000/jenkins';
+  private socket = io('http://localhost:3000');
+
+  constructor(private http: HttpClient) {}
+
+  getJobStatuses(): Observable<any> {
+    return this.http.get(`${this.apiUrl}/jobs`);
+  }
+
+  subscribeToBuildUpdates(callback: (data: any) => void) {
+    this.socket.emit('subscribeToJenkins');
+    this.socket.on('buildStatusUpdate', callback);
+  }
+}
+
+✅ What This Does:
+	•	Subscribes to real-time build updates
+	•	Emits subscribeToJenkins event
+	•	Listens for buildStatusUpdate event from backend
+
+6️⃣ Modify jenkins-dashboard.component.ts to Listen for Real-Time Updates
+
+Now, update the component to receive real-time Jenkins job statuses.
+
+import { Component, OnInit } from '@angular/core';
+import { JenkinsService } from '../../services/jenkins.service';
+
+@Component({
+  selector: 'app-jenkins-dashboard',
+  templateUrl: './jenkins-dashboard.component.html',
+  styleUrls: ['./jenkins-dashboard.component.css']
+})
+export class JenkinsDashboardComponent implements OnInit {
+  jobs: any[] = [];
+  loading = true;
+
+  constructor(private jenkinsService: JenkinsService) {}
+
+  ngOnInit() {
+    this.loadJobStatuses();
+    this.subscribeToBuildUpdates();
+  }
+
+  loadJobStatuses() {
+    this.loading = true;
+    this.jenkinsService.getJobStatuses().subscribe(data => {
+      this.jobs = data;
+      this.loading = false;
+    }, () => {
+      this.loading = false;
+    });
+  }
+
+  subscribeToBuildUpdates() {
+    this.jenkinsService.subscribeToBuildUpdates((data) => {
+      this.jobs = data;
+    });
+  }
+}
+
+✅ What This Does:
+	•	Loads initial Jenkins jobs
+	•	Listens for real-time build updates
+
+7️⃣ Modify jenkins-dashboard.component.html to Show Live Updates
+
+<h2>Jenkins Build Dashboard</h2>
+
+<mat-spinner *ngIf="loading"></mat-spinner>
+
+<mat-table [dataSource]="jobs" *ngIf="!loading">
+  <ng-container matColumnDef="name">
+    <mat-header-cell *matHeaderCellDef> Job Name </mat-header-cell>
+    <mat-cell *matCellDef="let job"> {{ job.name }} </mat-cell>
+  </ng-container>
+
+  <ng-container matColumnDef="status">
+    <mat-header-cell *matHeaderCellDef> Status </mat-header-cell>
+    <mat-cell *matCellDef="let job">
+      <mat-chip [style.backgroundColor]="getStatusColor(job.status)">
+        {{ job.status }}
+      </mat-chip>
+    </mat-cell>
+  </ng-container>
+
+  <ng-container matColumnDef="buildNumber">
+    <mat-header-cell *matHeaderCellDef> Build # </mat-header-cell>
+    <mat-cell *matCellDef="let job"> {{ job.lastBuild?.buildNumber || 'N/A' }} </mat-cell>
+  </ng-container>
+
+  <mat-header-row *matHeaderRowDef="['name', 'status', 'buildNumber']"></mat-header-row>
+  <mat-row *matRowDef="let row; columns: ['name', 'status', 'buildNumber'];"></mat-row>
+</mat-table>
+
+✅ Commits update live without needing a refresh!
+
+8️⃣ Run & Test
+
+Start Backend
+
+cd backend
+npm run start
+
+Start Frontend
+
+cd frontend
+ng serve
+
+Test WebSockets
+	1.	Open two browser tabs with Jenkins Dashboard (http://localhost:4200)
+	2.	Trigger a new Jenkins build
+	3.	The build status updates instantly in the frontend!
+
+🎯 Next Steps
+
+Now that Jenkins real-time updates are working, should we:
+1️⃣ Add environment health monitoring (Prometheus, Kubernetes)?
+2️⃣ Move to ServiceNow backend (incidents, change requests)?
